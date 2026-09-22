@@ -76,7 +76,21 @@ async def handle_text_urls(message: Message):
     try:
         result = await ffmpeg_queue.run(downloader.download, url, status_msg=status_msg)
     except Exception as e:
-        await status_msg.edit_text(f"❌ Не удалось скачать медиа: {str(e)[:200]}")
+        err_text = str(e)
+        if "Sign in to confirm you’re not a bot" in err_text or "Sign in to confirm you're not a bot" in err_text:
+            await status_msg.edit_text(
+                "⚠️ **YouTube заблокировал серверный запрос (защита от ботов).**\n\n"
+                "Для скачивания этого видео боту нужен файл `cookies.txt`.\n\n"
+                "👉 **Как решить за 20 секунд:**\n"
+                "1. Установите бесплатное расширение [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc).\n"
+                "2. Откройте youtube.com и нажмите *«Export»* в расширении.\n"
+                "3. **Просто отправьте полученный файл `cookies.txt` прямо в этот чат!**\n\n"
+                "Бот автоматически активирует его и сможет скачивать любые видео с YouTube.",
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
+        else:
+            await status_msg.edit_text(f"❌ Не удалось скачать медиа: {err_text[:250]}")
         return
 
     # 3. Отправка результата

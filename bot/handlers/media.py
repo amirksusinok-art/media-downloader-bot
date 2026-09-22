@@ -4,12 +4,14 @@ import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, FSInputFile, InputMediaPhoto
 from bot.config import MAX_FILE_SIZE_BYTES
-from bot.database import get_cached_media, save_cached_media, increment_user_downloads, hash_url
+from bot.database import get_cached_media, save_cached_media, increment_user_downloads, hash_url, get_user_watermark
 from bot.downloaders.tiktok import TikTokDownloader
 from bot.downloaders.ytdlp import YtDlpDownloader
 from bot.services.ffmpeg import FFmpegService
 from bot.services.cleaner import remove_files
-from bot.keyboards.media_kb import get_media_actions_kb, get_travel_quality_kb
+from bot.services.queue import ffmpeg_queue
+from bot.services.web_downloads import web_download_manager
+from bot.keyboards.media_kb import get_media_actions_kb, get_travel_quality_kb, get_direct_download_kb
 
 router = Router()
 
@@ -72,12 +74,13 @@ async def handle_text_urls(message: Message):
     downloader = tiktok_downloader if tiktok_downloader.can_handle(url) else ytdlp_downloader
 
     try:
-        result = await downloader.download(url)
+        result = await ffmpeg_queue.run(downloader.download, url, status_msg=status_msg)
     except Exception as e:
         await status_msg.edit_text(f"❌ Не удалось скачать медиа: {str(e)[:200]}")
         return
 
     # 3. Отправка результата
+    is_web_download = False
     try:
         if result.media_type == "images":
             # Фотокарусель (например, из TikTok)
@@ -103,29 +106,50 @@ async def handle_text_urls(message: Message):
                 await status_msg.edit_text("❌ Файл видео не найден после скачивания.")
                 return
 
+            # Проверяем, включен ли автоматический водяной знак
+            wm_text, is_wm_auto = await get_user_watermark(user_id)
+            if is_wm_auto and wm_text:
+                try:
+                    await status_msg.edit_text("🏷 Накладываю ваш водяной знак...")
+                    wm_file = await ffmpeg_queue.run(FFmpegService.apply_watermark, main_file, wm_text, status_msg=status_msg)
+                    remove_files(main_file)
+                    main_file = wm_file
+                    result.file_paths = [main_file]
+                except Exception:
+                    pass
+
             file_size = os.path.getsize(main_file)
 
             # Проверка лимита Telegram (50 МБ)
             if file_size > MAX_FILE_SIZE_BYTES:
                 await status_msg.edit_text("🗜 Видео больше 50 МБ, сжимаю для отправки в Telegram...")
                 try:
-                    compressed_file = await FFmpegService.compress_video(main_file, target_crf=32)
-                    remove_files(main_file)
-                    main_file = compressed_file
-                    file_size = os.path.getsize(main_file)
+                    compressed_file = await ffmpeg_queue.run(
+                        FFmpegService.compress_video, main_file, target_crf=32, status_msg=status_msg
+                    )
+                    if os.path.getsize(compressed_file) < file_size:
+                        remove_files(main_file)
+                        main_file = compressed_file
+                        file_size = os.path.getsize(main_file)
+                    else:
+                        remove_files(compressed_file)
                 except Exception:
                     pass
 
+            # Если файл ВСЕ ЕЩЕ больше 50 МБ -> генерируем прямую веб-ссылку на скачивание!
             if file_size > MAX_FILE_SIZE_BYTES:
-                # Если даже после сжатия видео слишком тяжелое — отправляем аудио
-                await status_msg.edit_text("⚠️ Видео превышает 50 МБ. Извлекаю аудиодорожку в MP3...")
-                audio_file = await FFmpegService.extract_audio(main_file)
-                await message.answer_audio(
-                    audio=FSInputFile(audio_file),
-                    caption=f"🎵 {result.title}\n⚠️ Видео превысило лимит Telegram, поэтому отправлен звук."
+                size_mb = file_size / (1024 * 1024)
+                await status_msg.edit_text(
+                    f"⚠️ **Видео весит {size_mb:.1f} МБ** (превышает лимит Telegram 50 МБ).\n\n"
+                    f"🌐 Я сгенерировал **прямую ссылку для скачивания в браузере** на максимальной скорости!\n"
+                    f"*(Ссылка действительна 1 час и удалится сразу после скачивания)*",
+                    reply_markup=get_direct_download_kb(
+                        web_download_manager.create_download_link(main_file, f"{result.title}.mp4"),
+                        size_mb
+                    ),
+                    parse_mode="Markdown"
                 )
-                remove_files(main_file, audio_file)
-                await status_msg.delete()
+                is_web_download = True
                 await increment_user_downloads(user_id)
                 return
 
@@ -160,5 +184,6 @@ async def handle_text_urls(message: Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка при отправке файла: {str(e)[:200]}")
     finally:
-        # Очистка локальных временных файлов
-        remove_files(*result.file_paths, result.music_path)
+        # Если файл передан в веб-менеджер скачивания, не удаляем его сразу
+        if not is_web_download:
+            remove_files(*result.file_paths, result.music_path)

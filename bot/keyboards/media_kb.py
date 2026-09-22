@@ -12,7 +12,18 @@ def get_media_actions_kb(media_id: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="⭕ В кружочек", callback_data=f"act:circle:{media_id}")
         ],
         [
-            InlineKeyboardButton(text="✂️ Как обрезать (/cut)", callback_data="info:cut")
+            InlineKeyboardButton(text="🏷 Вотермарк", callback_data=f"act:wm:{media_id}"),
+            InlineKeyboardButton(text="✂️ Обрезать (/cut)", callback_data="info:cut")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_direct_download_kb(download_url: str, size_mb: float = 0.0) -> InlineKeyboardMarkup:
+    """Клавиатура с прямой ссылкой на скачивание тяжелого видео в браузере."""
+    size_str = f" ({size_mb:.1f} МБ)" if size_mb > 0 else ""
+    buttons = [
+        [
+            InlineKeyboardButton(text=f"🌐 Скачать видео в браузере{size_str}", url=download_url)
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

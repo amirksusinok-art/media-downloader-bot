@@ -18,10 +18,22 @@ async def init_db():
                 username TEXT,
                 first_name TEXT,
                 downloads_count INTEGER DEFAULT 0,
+                watermark_text TEXT DEFAULT NULL,
+                watermark_auto INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Миграция колонок, если база уже создана
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN watermark_text TEXT DEFAULT NULL")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN watermark_auto INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS media_cache (
@@ -85,3 +97,43 @@ async def save_cached_media(url: str, file_id: str, media_type: str, title: Opti
             VALUES (?, ?, ?, ?, ?, ?)
         """, (url_h, url, file_id, media_type, title, file_size))
         await db.commit()
+
+async def set_user_watermark(user_id: int, text: Optional[str]):
+    """Устанавливает или сбрасывает текст водяного знака пользователя."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO users (user_id, watermark_text)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                watermark_text = excluded.watermark_text
+        """, (user_id, text))
+        await db.commit()
+
+async def toggle_watermark_auto(user_id: int) -> bool:
+    """Переключает автоматическое наложение водяного знака."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT watermark_auto FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            current = row[0] if row and row[0] is not None else 0
+        new_val = 0 if current == 1 else 1
+        await db.execute("""
+            INSERT INTO users (user_id, watermark_auto)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                watermark_auto = excluded.watermark_auto
+        """, (user_id, new_val))
+        await db.commit()
+        return new_val == 1
+
+async def get_user_watermark(user_id: int) -> tuple[Optional[str], bool]:
+    """Возвращает (watermark_text, is_auto_enabled) для пользователя."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT watermark_text, watermark_auto FROM users WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                text = row[0]
+                is_auto = bool(row[1]) if row[1] is not None else False
+                return text, is_auto
+    return None, False

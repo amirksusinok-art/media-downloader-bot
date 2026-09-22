@@ -1,0 +1,10 @@
+# Пример файла cookies.txt для обхода блокировок YouTube и Instagram
+#
+# Как получить актуальный файл cookies.txt:
+# 1. Установите расширение для браузера Chrome или Firefox (например, "Get cookies.txt LOCALLY").
+# 2. Откройте youtube.com или instagram.com под своим аккаунтом.
+# 3. Нажмите на расширение и экспортируйте cookies в формате Netscape.
+# 4. Переименуйте скачанный файл в cookies.txt и положите в папку data/cookies.txt на сервере.
+#
+# Файл имеет стандартный формат Netscape HTTP Cookie File:
+# .youtube.com	TRUE	/	TRUE	1750000000	SID	example_value

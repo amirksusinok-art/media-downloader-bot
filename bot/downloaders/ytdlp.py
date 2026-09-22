@@ -4,7 +4,7 @@ import uuid
 from typing import Optional
 import yt_dlp
 from bot.downloaders.base import BaseDownloader, MediaResult
-from bot.config import TEMP_DIR
+from bot.config import TEMP_DIR, COOKIES_PATH
 
 class YtDlpDownloader(BaseDownloader):
     def can_handle(self, url: str) -> bool:
@@ -49,6 +49,10 @@ class YtDlpDownloader(BaseDownloader):
                 "preferedformat": "mp4",
             }],
         }
+
+        # Если найден файл cookies.txt, используем его для обхода блокировок
+        if COOKIES_PATH.exists() and COOKIES_PATH.is_file():
+            ydl_opts["cookiefile"] = str(COOKIES_PATH)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)

@@ -122,3 +122,37 @@ class FFmpegService:
         if rc != 0 or not os.path.exists(out_path):
             raise RuntimeError(f"Ошибка обрезки видео: {err}")
         return out_path
+
+    @classmethod
+    async def apply_watermark(cls, video_path: str, text: str) -> str:
+        """Наложение водяного знака / никнейма в правый нижний угол видео."""
+        out_path = str(TEMP_DIR / f"watermark_{uuid.uuid4().hex[:8]}.mp4")
+        # Экранирование спецсимволов для фильтра drawtext
+        safe_text = text.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("%", "\\%")
+
+        # Кроссплатформенный выбор шрифта
+        font_param = ""
+        if os.name == "nt" and os.path.exists(r"C:\Windows\Fonts\arial.ttf"):
+            font_param = ":fontfile='C\\:/Windows/Fonts/arial.ttf'"
+        elif os.path.exists("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+            font_param = ":fontfile='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'"
+        elif os.path.exists("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+            font_param = ":fontfile='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'"
+
+        vf = f"drawtext=text='{safe_text}'{font_param}:x=w-tw-20:y=h-th-20:fontsize=24:fontcolor=white@0.85:box=1:boxcolor=black@0.45:boxborderw=6"
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-preset", "faster",
+            "-crf", "23",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            out_path
+        ]
+        rc, _, err = await cls._run_command(*cmd)
+        if rc != 0 or not os.path.exists(out_path):
+            raise RuntimeError(f"Ошибка наложения водяного знака: {err}")
+        return out_path

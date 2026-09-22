@@ -5,6 +5,8 @@ from aiogram.types import CallbackQuery, FSInputFile
 from bot.config import TEMP_DIR
 from bot.services.ffmpeg import FFmpegService
 from bot.services.cleaner import remove_files
+from bot.services.queue import ffmpeg_queue
+from bot.database import get_user_watermark
 from bot.keyboards.media_kb import get_media_actions_kb, get_speed_kb
 
 router = Router()
@@ -115,6 +117,39 @@ async def on_apply_speed(callback: CallbackQuery):
         await callback.message.reply(f"❌ Ошибка изменения скорости: {str(e)[:150]}")
     finally:
         remove_files(input_file, speed_file)
+
+@router.callback_query(F.data.startswith("act:wm:"))
+async def on_apply_watermark(callback: CallbackQuery):
+    user_id = callback.from_user.id if callback.from_user else 0
+    wm_text, _ = await get_user_watermark(user_id)
+
+    if not wm_text:
+        await callback.answer(
+            "⚠️ У вас не установлен водяной знак!\n"
+            "Задайте его командой в чате:\n/watermark @мой_канал",
+            show_alert=True
+        )
+        return
+
+    await callback.answer("⏳ Накладываю водяной знак...")
+    input_file = None
+    wm_file = None
+    try:
+        input_file = await download_message_video(callback)
+        wm_file = await ffmpeg_queue.run(FFmpegService.apply_watermark, input_file, wm_text)
+
+        media_id = callback.data.split(":")[-1]
+        await callback.message.reply_video(
+            video=FSInputFile(wm_file),
+            caption=f"🏷 **Видео с водяным знаком:** `{wm_text}`",
+            reply_markup=get_media_actions_kb(media_id),
+            supports_streaming=True,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await callback.message.reply(f"❌ Ошибка наложения водяного знака: {str(e)[:150]}")
+    finally:
+        remove_files(input_file, wm_file)
 
 @router.callback_query(F.data == "info:cut")
 async def on_cut_info(callback: CallbackQuery):

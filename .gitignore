@@ -1,0 +1,32 @@
+# Environment & Secrets
+.env
+.venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Data and temp media
+data/temp/
+data/*.db
+data/*.sqlite3
+data/*.log
+*.mp4
+*.mp3
+*.webm
+*.jpg
+*.png
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -89,6 +89,18 @@ async def handle_text_urls(message: Message):
                 parse_mode="Markdown",
                 disable_web_page_preview=True
             )
+        elif "The page needs to be reloaded" in err_text:
+            await status_msg.edit_text(
+                "⚠️ **YouTube сообщил: «The page needs to be reloaded».**\n\n"
+                "Файл `cookies.txt` устарел или был экспортирован с зависшей вкладки YouTube.\n\n"
+                "👉 **Как исправить за 1 минуту:**\n"
+                "1. Откройте youtube.com в обычной вкладке (не инкогнито), войдите в свой Google-аккаунт.\n"
+                "2. Запустите любое видео на 3–5 секунд, чтобы убедиться, что всё нормально проигрывается.\n"
+                "3. Нажмите на расширение ➔ *«Export»*.\n"
+                "4. **Отправьте новый файл `cookies.txt` боту в этот чат!**",
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
         else:
             await status_msg.edit_text(f"❌ Не удалось скачать медиа: {err_text[:250]}")
         return

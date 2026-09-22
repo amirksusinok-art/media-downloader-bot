@@ -1,3 +1,4 @@
+import os
 import sys
 import asyncio
 import logging
@@ -41,6 +42,23 @@ async def main():
 
     # Пропускаем накопившиеся апдейты
     await bot.delete_webhook(drop_pending_updates=True)
+
+    # Поддержка бесплатного хостинга на Render (Web Service):
+    # Если Render передает переменную PORT, запускаем мини-сервер для прохождения health check
+    port = os.getenv("PORT")
+    if port:
+        try:
+            from aiohttp import web
+            app = web.Application()
+            app.router.add_get("/", lambda r: web.Response(text="Bot is running OK!"))
+            app.router.add_get("/health", lambda r: web.Response(text="OK"))
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, "0.0.0.0", int(port))
+            await site.start()
+            logger.info(f"Render health-check сервер успешно запущен на порту {port}")
+        except Exception as e:
+            logger.warning(f"Не удалось запустить health-check сервер: {e}")
 
     logger.info("Бот успешно запущен и ожидает сообщений!")
     await dp.start_polling(bot)
